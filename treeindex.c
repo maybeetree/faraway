@@ -18,10 +18,10 @@ char PAD[509]= \
 
 struct node_v1 {
 	struct node_v1* children;
-	unsigned char* name;
-	uint64_t name_len;
-	uint64_t type;
-	uint64_t num_children;
+	char* name;
+	unsigned int name_len;
+	int type;
+	unsigned int num_children;
 };
 typedef struct node_v1 node_t;
 
@@ -49,7 +49,7 @@ void init_node(node_t *node, struct dirent *dent) {
 	node->children = NULL;
 
 	node->name_len = strlen(dent->d_name);
-	node->name = (unsigned char*)malloc(node->name_len);
+	node->name = (char*)malloc(node->name_len);
 	memcpy(node->name, dent->d_name, node->name_len);
 
 	node->type = dent->d_type;
@@ -107,6 +107,7 @@ void print_index(node_t *node, unsigned int depth) {
 
 void serialize_index(
 		node_t *node,
+		FILE *file,
 		unsigned int *counter
 		) {
 	return;
@@ -117,7 +118,7 @@ int main(void) {
 
 	index.num_children = 0;
 	index.children = NULL;
-	index.name = (unsigned char*)"/ayy";
+	index.name = "/ayy";
 	index.name_len = 4;
 	index.type = TYPE_DIR;
 
