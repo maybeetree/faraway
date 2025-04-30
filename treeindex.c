@@ -42,6 +42,18 @@ serialize_node(node_ser_t *ser, node_t *node) {
 	memcpy(ser->name, node->name, node->name_len);
 }
 
+deserialize_node(node_t *node, node_ser_t *ser) {
+	node->name_len = ser->name_len;
+	node->type = ser->type;
+	node->num_children = ser->num_children;
+
+	node->name = (unsigned char*)malloc(ser->name_len);
+	memcpy(node->name, ser->name, ser->name_len);
+
+	node->children = (node_t*)malloc(sizeof(node_t) * ser->num_children);
+}
+
+
 node_t* append_node(node_t *node) {
 	node_t *new_child;
 
@@ -137,8 +149,26 @@ void serialize_index(
 	}
 }
 
+void deserialize_index(
+		node_t *node,
+		FILE *file,
+		unsigned int *counter
+		) {
+	int i;
+	node_ser_t ser;
+
+	fread(&ser, sizeof(node_ser_t), 1, file);
+	deserialize_node(node, &ser);
+
+	for (i = 0; i < node->num_children; i++) {
+		deserialize_index(&(node->children[i]), file, counter);
+	}
+}
+
+
 int main(void) {
 	node_t index;
+	node_t index_deser;
 	FILE *file;
 
 	index.num_children = 0;
@@ -153,14 +183,19 @@ int main(void) {
 		&index
 		);
 
-	print_index(
-		&index,
-		0
-		);
 
 	file = fopen("index.ti", "wb");
 	serialize_index(&index, file, NULL);
 	fclose(file);
+
+	file = fopen("index.ti", "rb");
+	deserialize_index(&index_deser, file, NULL);
+	fclose(file);
+
+	print_index(
+		&index_deser,
+		0
+		);
 
 	return(0);
 }
