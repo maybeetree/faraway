@@ -12,5 +12,7 @@
 *.tgz
 *.txz
 *.zst
+
 build
+*.ti
 

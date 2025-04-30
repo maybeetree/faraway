@@ -18,12 +18,29 @@ char PAD[509]= \
 
 struct node_v1 {
 	struct node_v1* children;
-	char* name;
-	unsigned int name_len;
-	int type;
-	unsigned int num_children;
+	unsigned char* name;
+	uint64_t name_len;
+	uint64_t type;
+	uint64_t num_children;
 };
 typedef struct node_v1 node_t;
+
+struct node_v1_ser {
+	unsigned char* name;
+	uint64_t name_len;
+	uint64_t type;
+	uint64_t num_children;
+};
+typedef struct node_v1_ser node_ser_t;
+
+
+serialize_node(node_ser_t *ser, node_t *node) {
+	ser->name_len = node->name_len;
+	ser->type = node->type;
+	ser->num_children = node->num_children;
+	ser->name = (unsigned char*)malloc(node->name_len);
+	memcpy(ser->name, node->name, node->name_len);
+}
 
 node_t* append_node(node_t *node) {
 	node_t *new_child;
@@ -49,7 +66,7 @@ void init_node(node_t *node, struct dirent *dent) {
 	node->children = NULL;
 
 	node->name_len = strlen(dent->d_name);
-	node->name = (char*)malloc(node->name_len);
+	node->name = (unsigned char*)malloc(node->name_len);
 	memcpy(node->name, dent->d_name, node->name_len);
 
 	node->type = dent->d_type;
@@ -110,15 +127,23 @@ void serialize_index(
 		FILE *file,
 		unsigned int *counter
 		) {
-	return;
+	int i;
+	node_ser_t ser;
+
+	serialize_node(&ser, node);
+	fwrite(&ser, sizeof(node_ser_t), 1, file);
+	for (i = 0; i < node->num_children; i++) {
+		serialize_index(&(node->children[i]), file, counter);
+	}
 }
 
 int main(void) {
 	node_t index;
+	FILE *file;
 
 	index.num_children = 0;
 	index.children = NULL;
-	index.name = "/ayy";
+	index.name = (unsigned char*)"/ayy";
 	index.name_len = 4;
 	index.type = TYPE_DIR;
 
@@ -132,6 +157,10 @@ int main(void) {
 		&index,
 		0
 		);
+
+	file = fopen("index.ti", "wb");
+	serialize_index(&index, file, NULL);
+	fclose(file);
 
 	return(0);
 }
