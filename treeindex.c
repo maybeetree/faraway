@@ -16,47 +16,14 @@ char PAD[509]= \
 	"                                                                    "\
 	"                                 ";
 
-typedef struct node_t node_t;
-struct node_t {
-	node_t* children;
-	struct dirent dent;
-	unsigned int num_children;
+struct node_v1 {
+	struct node_v1* children;
+	unsigned char* name;
+	uint64_t name_len;
+	uint64_t type;
+	uint64_t num_children;
 };
-
-void action_print(struct dirent* dent, unsigned int depth) {
-	printf("%.*s%s %i\n", depth, PAD, dent->d_name, dent->d_type);
-}
-
-void recurse(
-		char* path,
-		unsigned int depth,
-		void (*action)(struct dirent*, unsigned int)
-		) {
-	DIR *dir;
-	struct dirent *dent;
-
-	dir = opendir(path);
-	while ((dent = readdir(dir)) != NULL) {
-
-		/*
-		printf("%.*s%s %i\n", depth, PAD, dent->d_name, dent->d_type);
-		*/
-		action(dent, depth);
-
-		if (dent->d_type == TYPE_DIR) {
-			if (strcmp(".", dent->d_name) == 0) {
-				continue;
-			}
-			if (strcmp("..", dent->d_name) == 0) {
-				continue;
-			}
-			sprintf(next_path, "%s/%s", path, dent->d_name);
-			recurse(next_path, depth + 1, action);
-		}
-	}
-
-	closedir(dir);
-}
+typedef struct node_v1 node_t;
 
 node_t* append_node(node_t *node) {
 	node_t *new_child;
@@ -64,13 +31,6 @@ node_t* append_node(node_t *node) {
 	node->num_children++;
 	node->children = (node_t*)
 		realloc(node->children, sizeof(node_t) * node->num_children);
-	/*
-	TODO what is actually wrong with this??
-	new_child = (
-		node->children
-		+ (sizeof(node_t) * (node->num_children - 1))
-		);
-		*/
 	new_child = &(node->children[node->num_children - 1]);
 
 	/*
@@ -84,9 +44,15 @@ node_t* append_node(node_t *node) {
 	return new_child;
 }
 
-void init_node(node_t *node) {
+void init_node(node_t *node, struct dirent *dent) {
 	node->num_children = 0;
 	node->children = NULL;
+
+	node->name_len = strlen(dent->d_name);
+	node->name = (unsigned char*)malloc(node->name_len);
+	memcpy(node->name, dent->d_name, node->name_len);
+
+	node->type = dent->d_type;
 }
 
 void recurse_index(
@@ -102,8 +68,7 @@ void recurse_index(
 	while ((dent = readdir(dir)) != NULL) {
 
 		new_node = append_node(node);
-		init_node(new_node);
-		memcpy(&(new_node->dent), dent, sizeof(struct dirent));
+		init_node(new_node, dent);
 
 		if (dent->d_type == TYPE_DIR) {
 			if (strcmp(".", dent->d_name) == 0) {
@@ -128,28 +93,33 @@ void print_index(node_t *node, unsigned int depth) {
 		child = &(node->children[i]);
 
 		printf(
-			"%.*s%s %i\n",
+			"%.*s%.*s %i\n",
 			depth,
 			PAD,
-			child->dent.d_name,
-			child->dent.d_type
+			child->name_len,
+			child->name,
+			child->type
 			);
 
-		if (child->dent.d_type == TYPE_DIR) {
-			print_index(child, depth + 1);
-		}
+		print_index(child, depth + 1);
 	}
 }
 
 void serialize_index(
 		node_t *node,
-		unsigned int *counter,
+		unsigned int *counter
 		) {
+	return;
 }
 
 int main(void) {
 	node_t index;
-	init_node(&index);
+
+	index.num_children = 0;
+	index.children = NULL;
+	index.name = (unsigned char*)"/ayy";
+	index.name_len = 4;
+	index.type = TYPE_DIR;
 
 	recurse_index(
 		"/home/maybetree/proj/etec/EE3/L11/litstudy",
