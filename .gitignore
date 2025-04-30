@@ -1,0 +1,16 @@
+*.sw*
+*.vim*
+*.obsession*
+*.bal
+*.old
+*.o
+*.a
+*.zip
+*.tar
+*.tar.*
+*.tzst
+*.tgz
+*.txz
+*.zst
+build
+
