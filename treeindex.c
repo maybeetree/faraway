@@ -3,6 +3,8 @@
 #include <stdlib.h> 
 #include <string.h> 
 #include <stdint.h> 
+#include <argp.h>
+#include <errno.h>
 
 const unsigned int TYPE_DIR = 4;
 char next_path[2048];
@@ -15,6 +17,13 @@ char PAD[509]= \
 	"                                                                    "\
 	"                                                                    "\
 	"                                 ";
+
+void check_errno() {
+	if (errno != 0) {
+		fprintf(stderr, "System error: %i\n", errno);
+		exit(errno);
+	}
+}
 
 struct node_v1 {
 	struct node_v1* children;
@@ -35,11 +44,15 @@ serialize_node(node_t *node, FILE *file) {
 
 deserialize_node(node_t *node, FILE *file) {
 	fread(&(node->name_len), sizeof(node->name_len), 1, file);
+	check_errno();
 	fread(&(node->type), sizeof(node->type), 1, file);
+	check_errno();
 	fread(&(node->num_children), sizeof(node->num_children), 1, file);
+	check_errno();
 
 	node->name = (unsigned char*)malloc(node->name_len);
 	fread(node->name, 1, node->name_len, file);
+	check_errno();
 
 	node->children = (node_t*)
 		malloc(node->num_children * sizeof(node_t));
@@ -64,6 +77,24 @@ node_t* append_node(node_t *node) {
 	return new_child;
 }
 
+node_t* get_child_by_name(node_t *node, char *name) {
+	node_t *child;
+	int i;
+
+	for (i = 0; i < node->num_children; i++) {
+		child = &(node->children[i]);
+		if (
+			strlen(name) == child->name_len
+			&&
+			strcmp(name, (char*)child->name) == 0
+			) {
+			
+			return child;
+		}
+	}
+	return NULL;
+}
+
 void init_node(node_t *node, struct dirent *dent) {
 	node->num_children = 0;
 	node->children = NULL;
@@ -83,8 +114,9 @@ void recurse_index(
 	DIR *dir;
 	struct dirent *dent;
 	node_t *new_node;
-
-	dir = opendir(path);
+	char next_path[1000];
+	
+	dir = opendir(path); check_errno();
 	while ((dent = readdir(dir)) != NULL) {
 
 		new_node = append_node(node);
@@ -98,6 +130,7 @@ void recurse_index(
 				continue;
 			}
 			sprintf(next_path, "%s/%s", path, dent->d_name);
+			/*fprintf(stderr, "%s\n", next_path);*/
 			recurse_index(next_path, depth + 1, new_node);
 		}
 	}
@@ -122,6 +155,22 @@ void print_index(node_t *node, unsigned int depth) {
 			);
 
 		print_index(child, depth + 1);
+	}
+}
+
+void print_children(node_t *node) {
+	unsigned int i;
+	node_t *child;
+
+	for (i = 0; i < node->num_children; i++) {
+		child = &(node->children[i]);
+
+		printf(
+			"%.*s %i\n",
+			child->name_len,
+			child->name,
+			child->type
+			);
 	}
 }
 
@@ -152,11 +201,35 @@ void deserialize_index(
 	}
 }
 
+void ls_index(node_t *node, char *path) {
+	char *token;
+	node_t *this_node;
 
-int main(void) {
+	token = strtok(path, "/");
+	this_node = node;
+
+	while (token) {
+		fprintf(stderr, "%s\n", token);
+		this_node = get_child_by_name(this_node, token);
+		if (this_node == NULL) {
+			fprintf(stderr, "Not found.\n");
+			exit(69);
+		}
+		token = strtok(NULL, "/");
+	}
+	print_children(this_node);
+}
+
+
+int main(int argc, char **argv) {
 	node_t index;
 	node_t index_deser;
 	FILE *file;
+
+	if (argc < 4) {
+		puts("err");
+		return 1;
+	}
 
 	index.num_children = 0;
 	index.children = NULL;
@@ -164,33 +237,32 @@ int main(void) {
 	index.name_len = 4;
 	index.type = TYPE_DIR;
 
-	recurse_index(
-		"/home/maybetree/proj/etec/EE3/L11/litstudy",
-		0,
-		&index
-		);
+	if (strcmp("scan", argv[2]) == 0) {
+		recurse_index(
+			argv[3],
+			0,
+			&index
+			);
+		file = fopen(argv[1], "wb"); check_errno();
+		serialize_index(&index, file, NULL);
+		fclose(file);
+	}
+	else if (strcmp("ls", argv[2]) == 0) {
+		file = fopen(argv[1], "rb"); check_errno();
+		deserialize_index(&index, file, NULL);
+		fclose(file);
+
+		ls_index(
+			&index,
+			argv[3]
+			);
+	}
+	else {
+		puts("unknown");
+		return 1;
+	}
 
 
-	file = fopen("index.ti", "wb");
-	serialize_index(&index, file, NULL);
-	fclose(file);
-
-	/*
-	print_index(
-		&index,
-		0
-		);
-	*/
-
-	file = fopen("index.ti", "rb");
-	deserialize_index(&index_deser, file, NULL);
-	fclose(file);
-
-	print_index(
-		&index_deser,
-		0
-		);
-
-	return(0);
+	return 0;
 }
 
