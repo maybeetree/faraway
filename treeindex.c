@@ -20,39 +20,30 @@ struct node_v1 {
 	struct node_v1* children;
 	unsigned char* name;
 	uint64_t name_len;
-	uint64_t type;
+	unsigned char type;
 	uint64_t num_children;
 };
 typedef struct node_v1 node_t;
 
-struct node_v1_ser {
-	unsigned char* name;
-	uint64_t name_len;
-	uint64_t type;
-	uint64_t num_children;
-};
-typedef struct node_v1_ser node_ser_t;
+serialize_node(node_t *node, FILE *file) {
+	fwrite(&(node->name_len), sizeof(node->name_len), 1, file);
+	fwrite(&(node->type), sizeof(node->type), 1, file);
+	fwrite(&(node->num_children), sizeof(node->num_children), 1, file);
 
-
-serialize_node(node_ser_t *ser, node_t *node) {
-	ser->name_len = node->name_len;
-	ser->type = node->type;
-	ser->num_children = node->num_children;
-	ser->name = (unsigned char*)malloc(node->name_len);
-	memcpy(ser->name, node->name, node->name_len);
+	fwrite(node->name, node->name_len, 1, file);
 }
 
-deserialize_node(node_t *node, node_ser_t *ser) {
-	node->name_len = ser->name_len;
-	node->type = ser->type;
-	node->num_children = ser->num_children;
+deserialize_node(node_t *node, FILE *file) {
+	fread(&(node->name_len), sizeof(node->name_len), 1, file);
+	fread(&(node->type), sizeof(node->type), 1, file);
+	fread(&(node->num_children), sizeof(node->num_children), 1, file);
 
-	node->name = (unsigned char*)malloc(ser->name_len);
-	memcpy(node->name, ser->name, ser->name_len);
+	node->name = (unsigned char*)malloc(node->name_len);
+	fread(node->name, 1, node->name_len, file);
 
-	node->children = (node_t*)malloc(sizeof(node_t) * ser->num_children);
+	node->children = (node_t*)
+		malloc(node->num_children * sizeof(node_t));
 }
-
 
 node_t* append_node(node_t *node) {
 	node_t *new_child;
@@ -140,10 +131,8 @@ void serialize_index(
 		unsigned int *counter
 		) {
 	int i;
-	node_ser_t ser;
 
-	serialize_node(&ser, node);
-	fwrite(&ser, sizeof(node_ser_t), 1, file);
+	serialize_node(node, file);
 	for (i = 0; i < node->num_children; i++) {
 		serialize_index(&(node->children[i]), file, counter);
 	}
@@ -155,10 +144,8 @@ void deserialize_index(
 		unsigned int *counter
 		) {
 	int i;
-	node_ser_t ser;
 
-	fread(&ser, sizeof(node_ser_t), 1, file);
-	deserialize_node(node, &ser);
+	deserialize_node(node, file);
 
 	for (i = 0; i < node->num_children; i++) {
 		deserialize_index(&(node->children[i]), file, counter);
@@ -187,6 +174,13 @@ int main(void) {
 	file = fopen("index.ti", "wb");
 	serialize_index(&index, file, NULL);
 	fclose(file);
+
+	/*
+	print_index(
+		&index,
+		0
+		);
+	*/
 
 	file = fopen("index.ti", "rb");
 	deserialize_index(&index_deser, file, NULL);
