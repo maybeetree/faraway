@@ -201,6 +201,64 @@ void deserialize_index(
 	}
 }
 
+void deserialize_index_progressive(
+		node_t *node,
+		FILE *file,
+		char *path
+		) {
+	char* next_path;
+	int path_seg_len;
+	int i;
+
+	next_path = strchr(path, '/');
+	path_seg_len = next_path - path;
+
+	deserialize_node(node, file);
+
+	if (path_seg_len != node->name_len) {
+		return;
+	}
+
+	if (strncmp((char*)(node->name), path, path_seg_len) != 0) {
+		return;
+	}
+
+	/*
+	 * TODO this wont work need to store an internal reference
+	 * i.e. how many children to skip
+	 */
+
+	for (i = 0; i < node->num_children; i++) {
+		deserialize_index_progressive(&(node->children[i]), file, next_path);
+	}
+}
+
+node_t* pad_index(node_t *node, char *path) {
+	node_t *child;
+	char* next_path;
+	int path_seg_len;
+
+	if (path[0] == '/') {
+		path++;
+	}
+
+	next_path = strchr(path, '/');
+	path_seg_len = next_path - path;
+
+	node->type = 4;
+	node->name_len = path_seg_len;
+	node->name = (unsigned char*)malloc(path_seg_len);
+	strncpy((char*)node->name, path, path_seg_len);
+
+	if (next_path == NULL) {
+		return node;
+	}
+
+	child = append_node(node);
+
+	return pad_index(child, next_path);
+}
+
 void ls_index(node_t *node, char *path) {
 	char *token;
 	node_t *this_node;
@@ -224,6 +282,7 @@ void ls_index(node_t *node, char *path) {
 int main(int argc, char **argv) {
 	node_t index;
 	node_t index_deser;
+	node_t *index_start;
 	FILE *file;
 
 	if (argc < 4) {
@@ -238,10 +297,11 @@ int main(int argc, char **argv) {
 	index.type = TYPE_DIR;
 
 	if (strcmp("scan", argv[2]) == 0) {
+		index_start = pad_index(&index, argv[3]);
 		recurse_index(
 			argv[3],
 			0,
-			&index
+			index_start
 			);
 		file = fopen(argv[1], "wb"); check_errno();
 		serialize_index(&index, file, NULL);
