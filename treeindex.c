@@ -31,7 +31,7 @@ struct node_v1 {
 	uint64_t name_len;
 	unsigned char type;
 	uint64_t num_children;
-	int *child_offsets;
+	uint64_t *child_offsets;
 };
 typedef struct node_v1 node_t;
 
@@ -58,20 +58,9 @@ void deserialize_node(node_t *node, FILE *file) {
 	node->children = (node_t*)
 		malloc(node->num_children * sizeof(node_t));
 
-	node->child_offsets = (int*)
-		malloc(sizeof(int) * node->num_children);
-	fread(node->child_offsets, sizeof(int), node->num_children, file);
-
-	/*
-	if (child_offsets != NULL) {
-		*child_offsets = (int*)
-			malloc(sizeof(int) * node->num_children);
-		fread(*child_offsets, sizeof(int), node->num_children, file);
-	}
-	else {
-		fseek(file, node->num_children * sizeof(int), SEEK_CUR);
-	}
-	*/
+	node->child_offsets = (uint64_t*)
+		malloc(sizeof(uint64_t) * node->num_children);
+	fread(node->child_offsets, sizeof(uint64_t), node->num_children, file);
 }
 
 node_t* append_node(node_t *node) {
@@ -222,17 +211,17 @@ void print_children(node_t *node) {
 	}
 }
 
-int serialize_index(
+uint64_t serialize_index(
 		node_t *node,
 		FILE *file
 		) {
 	int i;
-	int self_position;
-	int self_position_end;
-	int position_children_positions;
-	int* children_positions;
+	uint64_t self_position;
+	uint64_t self_position_end;
+	uint64_t position_children_positions;
+	uint64_t* children_positions;
 
-	children_positions = (int*)malloc(node->num_children * sizeof(int));
+	children_positions = (uint64_t*)malloc(node->num_children * sizeof(uint64_t));
 
 	self_position = ftell(file);
 	serialize_node(node, file);
@@ -240,7 +229,7 @@ int serialize_index(
 	check_errno();
 
 	/* TODO write zeros instead? */
-	fwrite(children_positions, node->num_children * sizeof(int), 1, file);
+	fwrite(children_positions, node->num_children * sizeof(uint64_t), 1, file);
 	check_errno();
 
 	for (i = 0; i < node->num_children; i++) {
@@ -251,7 +240,7 @@ int serialize_index(
 	check_errno();
 	fseek(file, position_children_positions, SEEK_SET);
 	check_errno();
-	fwrite(children_positions, node->num_children * sizeof(int), 1, file);
+	fwrite(children_positions, node->num_children * sizeof(uint64_t), 1, file);
 	check_errno();
 	fseek(file, self_position_end, SEEK_SET);
 	check_errno();
