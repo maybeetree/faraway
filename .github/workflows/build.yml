@@ -16,6 +16,9 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v2
 
+      - name: Install GCC
+        run: apt install gcc
+
       - name: Build
         run: |
           set -e
