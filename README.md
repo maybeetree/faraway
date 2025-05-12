@@ -24,7 +24,7 @@ Run `make` from the root of the repository.
 This will compile `build/faraway` using GCC.
 
 Static and dynamic builds are also available on the
-[releases page]().
+[releases page](https://github.com/maybeetree/faraway/releases).
 
 ## Using
 
