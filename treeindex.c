@@ -31,6 +31,7 @@ struct node_v1 {
 	uint64_t name_len;
 	unsigned char type;
 	uint64_t num_children;
+	int *child_offsets;
 };
 typedef struct node_v1 node_t;
 
@@ -42,7 +43,7 @@ serialize_node(node_t *node, FILE *file) {
 	fwrite(node->name, node->name_len, 1, file);
 }
 
-deserialize_node(node_t *node, FILE *file) {
+void deserialize_node(node_t *node, FILE *file) {
 	fread(&(node->name_len), sizeof(node->name_len), 1, file);
 	check_errno();
 	fread(&(node->type), sizeof(node->type), 1, file);
@@ -56,6 +57,21 @@ deserialize_node(node_t *node, FILE *file) {
 
 	node->children = (node_t*)
 		malloc(node->num_children * sizeof(node_t));
+
+	node->child_offsets = (int*)
+		malloc(sizeof(int) * node->num_children);
+	fread(node->child_offsets, sizeof(int), node->num_children, file);
+
+	/*
+	if (child_offsets != NULL) {
+		*child_offsets = (int*)
+			malloc(sizeof(int) * node->num_children);
+		fread(*child_offsets, sizeof(int), node->num_children, file);
+	}
+	else {
+		fseek(file, node->num_children * sizeof(int), SEEK_CUR);
+	}
+	*/
 }
 
 node_t* append_node(node_t *node) {
@@ -95,13 +111,22 @@ node_t* get_child_by_name(node_t *node, char *name) {
 	return NULL;
 }
 
-void init_node(node_t *node, struct dirent *dent) {
+void init_node(
+		node_t *node,
+		struct dirent *dent,
+		char* alt_name
+		) {
+	
+	if (alt_name == NULL) {
+		alt_name = dent->d_name;
+	}
+
 	node->num_children = 0;
 	node->children = NULL;
 
-	node->name_len = strlen(dent->d_name);
+	node->name_len = strlen(alt_name);
 	node->name = (unsigned char*)malloc(node->name_len);
-	memcpy(node->name, dent->d_name, node->name_len);
+	memcpy(node->name, alt_name, node->name_len);
 
 	node->type = dent->d_type;
 }
@@ -115,22 +140,45 @@ void recurse_index(
 	struct dirent *dent;
 	node_t *new_node;
 	char next_path[1000];
+	char* this_dir_name;
+	char* this_dir_name_buf;
+	char* path2;
+
+	/*
+	path2 = (char*)malloc(strlen(path) + 1);
+	strcpy(path2, path);
+
+	this_dir_name = strtok(path2, "/");
+	while (this_dir_name != NULL) {
+		this_dir_name_buf = this_dir_name;
+		this_dir_name = strtok(NULL, "/");
+	}
+	*/
 	
 	dir = opendir(path); check_errno();
 	while ((dent = readdir(dir)) != NULL) {
 
+		check_errno();
+
 		new_node = append_node(node);
-		init_node(new_node, dent);
+		init_node(new_node, dent, NULL);
 
 		if (dent->d_type == TYPE_DIR) {
 			if (strcmp(".", dent->d_name) == 0) {
+				/*
+				init_node(node, dent, this_dir_name_buf);
+				*/
 				continue;
 			}
 			if (strcmp("..", dent->d_name) == 0) {
 				continue;
 			}
+
 			sprintf(next_path, "%s/%s", path, dent->d_name);
-			/*fprintf(stderr, "%s\n", next_path);*/
+			/*
+			fprintf(stderr, "%s %s %s\n", path, dent->d_name, next_path);
+			*/
+
 			recurse_index(next_path, depth + 1, new_node);
 		}
 	}
@@ -174,63 +222,117 @@ void print_children(node_t *node) {
 	}
 }
 
-void serialize_index(
+int serialize_index(
 		node_t *node,
-		FILE *file,
-		unsigned int *counter
+		FILE *file
 		) {
 	int i;
+	int self_position;
+	int self_position_end;
+	int position_children_positions;
+	int* children_positions;
 
+	children_positions = (int*)malloc(node->num_children * sizeof(int));
+
+	self_position = ftell(file);
 	serialize_node(node, file);
+	position_children_positions = ftell(file);
+	check_errno();
+
+	/* TODO write zeros instead? */
+	fwrite(children_positions, node->num_children * sizeof(int), 1, file);
+	check_errno();
+
 	for (i = 0; i < node->num_children; i++) {
-		serialize_index(&(node->children[i]), file, counter);
+		children_positions[i] = serialize_index(&(node->children[i]), file);
 	}
+
+	self_position_end = ftell(file);
+	check_errno();
+	fseek(file, position_children_positions, SEEK_SET);
+	check_errno();
+	fwrite(children_positions, node->num_children * sizeof(int), 1, file);
+	check_errno();
+	fseek(file, self_position_end, SEEK_SET);
+	check_errno();
+
+	free(children_positions);
+
+	return self_position;
 }
 
 void deserialize_index(
 		node_t *node,
-		FILE *file,
-		unsigned int *counter
+		FILE *file
 		) {
 	int i;
 
 	deserialize_node(node, file);
 
 	for (i = 0; i < node->num_children; i++) {
-		deserialize_index(&(node->children[i]), file, counter);
+		deserialize_index(&(node->children[i]), file);
 	}
 }
 
 void deserialize_index_progressive(
 		node_t *node,
 		FILE *file,
-		char *path
+		char *path,
+		int first
 		) {
-	char* next_path;
-	int path_seg_len;
 	int i;
+	int pos_bak;
+	node_t *child;
+	char *dirname;
 
-	next_path = strchr(path, '/');
-	path_seg_len = next_path - path;
-
-	deserialize_node(node, file);
-
-	if (path_seg_len != node->name_len) {
-		return;
+	while (path != NULL && path[0] == '/') {
+		path++;
 	}
 
-	if (strncmp((char*)(node->name), path, path_seg_len) != 0) {
-		return;
+	if (first) {
+		deserialize_node(node, file);
 	}
 
-	/*
-	 * TODO this wont work need to store an internal reference
-	 * i.e. how many children to skip
-	 */
+	dirname = strtok(path, "/");
 
 	for (i = 0; i < node->num_children; i++) {
-		deserialize_index_progressive(&(node->children[i]), file, next_path);
+		child = &(node->children[i]);
+		/*
+		fprintf(stderr, "%i \n", node->child_offsets[i]);
+		*/
+		fseek(file, node->child_offsets[i], SEEK_SET);
+		deserialize_node(child, file);
+
+		/*
+		fprintf(stderr, "%s %.*s %.*s\n", dirname, child->name_len, child->name, node->name_len, node->name);
+		*/
+
+		if (dirname == NULL) {
+			/* Load all children of last node */
+			continue;
+		}
+
+		if (
+			strlen(dirname) == child->name_len
+			&&
+			strcmp(dirname, (char*)child->name) == 0
+			) {
+
+			
+			deserialize_index_progressive(
+					child, file, NULL, 0);
+
+			return;
+		}
 	}
+
+	if (dirname == NULL) {
+		print_children(node);
+		return;
+	}
+
+	fprintf(stderr, "Not found.\n");
+	exit(69);
 }
 
 node_t* pad_index(node_t *node, char *path) {
@@ -238,12 +340,17 @@ node_t* pad_index(node_t *node, char *path) {
 	char* next_path;
 	int path_seg_len;
 
-	if (path[0] == '/') {
+	while (path[0] == '/') {
 		path++;
 	}
 
 	next_path = strchr(path, '/');
-	path_seg_len = next_path - path;
+	if (next_path == NULL) {
+		path_seg_len = strlen(path);
+	}
+	else {
+		path_seg_len = next_path - path;
+	}
 
 	node->type = 4;
 	node->name_len = path_seg_len;
@@ -251,6 +358,8 @@ node_t* pad_index(node_t *node, char *path) {
 	strncpy((char*)node->name, path, path_seg_len);
 
 	if (next_path == NULL) {
+		node->num_children = 0;
+		node->children = NULL;
 		return node;
 	}
 
@@ -267,7 +376,9 @@ void ls_index(node_t *node, char *path) {
 	this_node = node;
 
 	while (token) {
+		/*
 		fprintf(stderr, "%s\n", token);
+		*/
 		this_node = get_child_by_name(this_node, token);
 		if (this_node == NULL) {
 			fprintf(stderr, "Not found.\n");
@@ -280,8 +391,8 @@ void ls_index(node_t *node, char *path) {
 
 
 int main(int argc, char **argv) {
-	node_t index;
-	node_t index_deser;
+	node_t root;
+	node_t *index;
 	node_t *index_start;
 	FILE *file;
 
@@ -290,32 +401,43 @@ int main(int argc, char **argv) {
 		return 1;
 	}
 
-	index.num_children = 0;
-	index.children = NULL;
-	index.name = (unsigned char*)"/ayy";
-	index.name_len = 4;
-	index.type = TYPE_DIR;
+	root.num_children = 0;
+	root.children = NULL;
+	root.name = (unsigned char*)"ROOT";
+	root.name_len = 4;
+	root.type = TYPE_DIR;
+
+	index = append_node(&root);
 
 	if (strcmp("scan", argv[2]) == 0) {
-		index_start = pad_index(&index, argv[3]);
+
+		/* remove trailing slashes */
+		while (argv[3][strlen(argv[3])-1] == '/') {
+			argv[3][strlen(argv[3])-1] = '\0';
+		}
+
+		index_start = pad_index(index, argv[3]);
 		recurse_index(
 			argv[3],
 			0,
 			index_start
 			);
 		file = fopen(argv[1], "wb"); check_errno();
-		serialize_index(&index, file, NULL);
+		serialize_index(&root, file);
 		fclose(file);
 	}
 	else if (strcmp("ls", argv[2]) == 0) {
 		file = fopen(argv[1], "rb"); check_errno();
-		deserialize_index(&index, file, NULL);
+		/*deserialize_index(index, file);*/
+		deserialize_index_progressive(&root, file, argv[3], 1);
 		fclose(file);
 
+		/*
 		ls_index(
-			&index,
+			&root,
 			argv[3]
 			);
+			*/
 	}
 	else {
 		puts("unknown");
