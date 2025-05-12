@@ -1,7 +1,14 @@
 
-build: treeindex.c
+build: faraway.c
 	@mkdir -p build
-	gcc -g -ansi -pedantic -Wfatal-errors -Werror treeindex.c -o build/treeindex
+	gcc -g -ansi -pedantic -Wfatal-errors -Werror faraway.c -o build/faraway
+
+buildstatic: faraway.c
+	@mkdir -p build
+	gcc -static -static-libgcc -g -ansi -pedantic -Wfatal-errors -Werror faraway.c -o build/faraway.static
 
 debug: build
-	gdb ./build/treeindex
+	gdb ./build/faraway
+
+.PHONY: build buildstatic
+

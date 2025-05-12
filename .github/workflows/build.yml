@@ -1,0 +1,35 @@
+name: build
+
+on:
+  push:
+    tags:
+      - '*'
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v2
+
+      - name: Build
+        run: |
+          set -e
+          make build
+          make buildstatic
+          tagname=$(git describe --tags --abbrev=0)
+          mv build/faraway "build/faraway-${tagname}"
+          mv build/faraway.static "build/faraway.static-${tagname}"
+          set +e
+
+      - name: Upload release artifact (Linux)
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: "build/faraway*"
+          # Allow adding artifact to existing release
+          allowUpdates: true
+
