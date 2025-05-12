@@ -186,7 +186,7 @@ void print_index(node_t *node, unsigned int depth) {
 			"%.*s%.*s %i\n",
 			depth,
 			PAD,
-			child->name_len,
+			(int)(child->name_len),
 			child->name,
 			child->type
 			);
@@ -204,7 +204,7 @@ void print_children(node_t *node) {
 
 		printf(
 			"%.*s %i\n",
-			child->name_len,
+			(int)(child->name_len),
 			child->name,
 			child->type
 			);
